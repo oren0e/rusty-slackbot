@@ -1,0 +1,18 @@
+[package]
+name = "rusty-slackbot"
+version = "0.1.0"
+authors = ["Oren Epshtain"]
+edition = "2021"
+
+[[bin]]
+name = "rusty"
+path = "src/main.rs"
+
+[dependencies]
+reqwest = { version = "0.11.8", features = ["json", "blocking"] }
+serde = { version = "1.0.133", features = ["derive"] }
+serde_json = "1.0.74"
+thiserror = "1.0.30"
+anyhow = "1.0.52"
+slack = "0.25.0"
+regex = "1.5.4"
