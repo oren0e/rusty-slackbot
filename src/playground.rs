@@ -3,6 +3,7 @@ use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::fmt;
+use std::str::FromStr;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -56,6 +57,20 @@ impl fmt::Display for RustChannel {
                 RustChannel::Nightly => "nightly",
             }
         )
+    }
+}
+
+impl FromStr for RustChannel {
+    type Err = RustyBotError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let s = s.to_lowercase();
+        match s.as_str() {
+            "stable" => Ok(Self::Stable),
+            "beta" => Ok(Self::Beta),
+            "nightly" => Ok(Self::Nightly),
+            _ => Err(RustyBotError::InvalidRustChannel),
+        }
     }
 }
 
@@ -169,5 +184,11 @@ mod tests {
         let response = request.execute().unwrap();
         assert!(response.playground_response.success);
         assert_eq!(response.playground_response.stdout, "2\n");
+    }
+
+    #[test]
+    fn test_from_str_channel() {
+        let channel = RustChannel::from_str("stable").unwrap();
+        assert_eq!(channel.to_string(), "stable".to_string());
     }
 }
