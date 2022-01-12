@@ -4,6 +4,8 @@ use reqwest::header;
 use serde_json::json;
 use std::env;
 
+const BASE_URL: &str = "https://slack.com/api/";
+
 #[derive(Debug)]
 pub struct SlackClient {
     client: Client,
@@ -103,9 +105,24 @@ impl SlackClient {
             ]
         }
                     );
-        let response = self
+        let _response = self
             .client
-            .post("https://slack.com/api/chat.postMessage")
+            .post(format!("{}/chat.postMessage", BASE_URL))
+            .json(&payload)
+            .send()
+            .map_err(|e| RustyBotError::InternalServerError(e.into()))?;
+        Ok(())
+    }
+
+    pub fn send_reply(&self, channel_id: &str, reply: String) -> Result<(), RustyBotError> {
+        let payload = json!(
+        {
+        "channel": format!("{}", channel_id),
+        "text": format!("{}", reply)
+        });
+        let _response = self
+            .client
+            .post(format!("{}/chat.postMessage", BASE_URL))
             .json(&payload)
             .send()
             .map_err(|e| RustyBotError::InternalServerError(e.into()))?;
@@ -114,8 +131,4 @@ impl SlackClient {
 }
 
 // TODO:
-// 2. when the event Message occurs (listening for it using the RtmClient from slack library) then
-//    on_message() is triggered and eventually the sending will be done with SlackRust which will be a
-//    client with send_message method. posting to this endpoint
-//    https://slack.com/api/chat.postMessage with the proper bearer token in the header
 // 3. create tests using a mock server (httpmock crate)
