@@ -31,7 +31,13 @@ pub struct PlaygroundResponse {
 #[derive(Debug, Deserialize)]
 struct ShareResponse {
     pub id: String,
-    pub url: String,
+    pub _url: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PlaygroundAnswer {
+    pub playground_answer: PlaygroundResponse,
+    pub link: String,
 }
 
 impl PlaygroundRequest {
