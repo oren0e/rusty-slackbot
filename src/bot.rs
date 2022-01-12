@@ -1,6 +1,6 @@
 use crate::error::RustyBotError;
 use crate::playground::{PlaygroundAnswer, PlaygroundRequest};
-use crate::slack::SlackClient;
+use crate::slack_conn::SlackClient;
 use regex::Regex;
 use slack::{self, Event, EventHandler, RtmClient};
 use std::env;
