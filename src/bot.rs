@@ -1,7 +1,7 @@
 use crate::error::RustyBotError;
 use crate::playground::{PlaygroundRequest, PlaygroundResponse, Response};
 use regex::Regex;
-use slack::{self, Event, RtmClient};
+use slack::{Event, EventHandler, RtmClient};
 
 pub struct RustyBot;
 
