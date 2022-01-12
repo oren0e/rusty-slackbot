@@ -2,14 +2,12 @@ use crate::error::RustyBotError;
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::fmt;
-use std::str::FromStr;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlaygroundRequest {
     backtrace: bool,
-    channel: RustChannel,
+    channel: &'static str,
     code: String,
     crate_type: &'static str,
     edition: &'static str,
@@ -30,55 +28,17 @@ pub struct PlaygroundResponse {
     pub stderr: String,
 }
 
-#[derive(Debug, Serialize)]
-pub enum RustChannel {
-    #[serde(rename = "stable")]
-    Stable,
-    #[serde(rename = "beta")]
-    Beta,
-    #[serde(rename = "nightly")]
-    Nightly,
-}
-
 #[derive(Debug, Deserialize)]
 struct ShareResponse {
     pub id: String,
     pub url: String,
 }
 
-impl fmt::Display for RustChannel {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                RustChannel::Stable => "stable",
-                RustChannel::Beta => "beta",
-                RustChannel::Nightly => "nightly",
-            }
-        )
-    }
-}
-
-impl FromStr for RustChannel {
-    type Err = RustyBotError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let s = s.to_lowercase();
-        match s.as_str() {
-            "stable" => Ok(Self::Stable),
-            "beta" => Ok(Self::Beta),
-            "nightly" => Ok(Self::Nightly),
-            _ => Err(RustyBotError::InvalidRustChannel),
-        }
-    }
-}
-
 impl PlaygroundRequest {
-    pub fn new(code: String, channel: RustChannel) -> Self {
+    pub fn new(code: String) -> Self {
         Self {
             backtrace: false,
-            channel,
+            channel: "stable",
             code,
             crate_type: "bin",
             edition: "2021",
@@ -91,7 +51,7 @@ impl PlaygroundRequest {
         let code_to_eval = format!("fn main() {{{}}}", code);
         Self {
             backtrace: false,
-            channel: RustChannel::Stable,
+            channel: "stable",
             code: code_to_eval,
             crate_type: "bin",
             edition: "2021",
@@ -141,10 +101,9 @@ mod tests {
 
     #[test]
     fn test_execute_working_code() {
-        let channel = RustChannel::Stable;
         let code = String::from("fn main() {\n\tprintln!(\"Hello, world!\");\n}");
 
-        let request = PlaygroundRequest::new(code, channel);
+        let request = PlaygroundRequest::new(code);
         let response = request.execute().unwrap();
 
         assert_eq!(response.status_code, "200");
@@ -156,10 +115,9 @@ mod tests {
 
     #[test]
     fn test_execute_not_working_code() {
-        let channel = RustChannel::Stable;
         let code = String::from("fn main() {\n\tprintln!(\"Hello, world!\");\n"); // missing "}"
 
-        let request = PlaygroundRequest::new(code, channel);
+        let request = PlaygroundRequest::new(code);
         let response = request.execute().unwrap();
 
         assert_eq!(response.status_code, "200");
@@ -169,10 +127,9 @@ mod tests {
 
     #[test]
     fn test_create_share_link() {
-        let channel = RustChannel::Stable;
         let code = String::from("fn main() {\n\tprintln!(\"Hello, world!\");\n}");
 
-        let request = PlaygroundRequest::new(code, channel);
+        let request = PlaygroundRequest::new(code);
         request.create_share_link().unwrap();
     }
 
@@ -184,11 +141,5 @@ mod tests {
         let response = request.execute().unwrap();
         assert!(response.playground_response.success);
         assert_eq!(response.playground_response.stdout, "2\n");
-    }
-
-    #[test]
-    fn test_from_str_channel() {
-        let channel = RustChannel::from_str("stable").unwrap();
-        assert_eq!(channel.to_string(), "stable".to_string());
     }
 }
