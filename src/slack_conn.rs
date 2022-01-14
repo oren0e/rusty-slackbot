@@ -1,18 +1,18 @@
 use crate::error::RustyBotError;
-use reqwest::blocking::Client;
 use reqwest::header;
+use reqwest::Client;
 use serde_json::json;
 use std::env;
 
 const BASE_URL: &str = "https://slack.com/api/";
 
 #[derive(Debug)]
-pub struct SlackClient {
+pub struct SlackSendClient {
     client: Client,
 }
 
-impl SlackClient {
-    pub fn init() -> Result<Self, RustyBotError> {
+impl SlackSendClient {
+    pub async fn init() -> Result<Self, RustyBotError> {
         let token = env::var("SLACK_TOKEN").expect("SLACK_TOKEN env var was not found");
         let bearer = format!("Bearer {}", token);
         let mut auth_value = header::HeaderValue::from_str(&bearer)
@@ -27,7 +27,7 @@ impl SlackClient {
         Ok(Self { client })
     }
 
-    pub fn send_code_reply(
+    pub async fn send_code_reply(
         &self,
         channel_id: &str,
         share_link: &str,
@@ -36,7 +36,7 @@ impl SlackClient {
     ) -> Result<(), RustyBotError> {
         let payload = json!(
                     {
-            "channel": format!("{}", channel_id),
+            "channel": channel_id.to_string(),
             "text": "Executing...",
             "blocks": [
                 {
@@ -61,7 +61,7 @@ impl SlackClient {
                             "emoji": true
                         },
                         "value": "click_me_123",
-                        "url": format!("{}", share_link),
+                        "url": share_link.to_string(),
                         "action_id": "button-action"
                     }
                 },
@@ -110,22 +110,29 @@ impl SlackClient {
             .post(format!("{}/chat.postMessage", BASE_URL))
             .json(&payload)
             .send()
+            .await
             .map_err(|e| RustyBotError::InternalServerError(e.into()))?;
         Ok(())
     }
 
-    pub fn send_reply(&self, channel_id: &str, reply: String) -> Result<(), RustyBotError> {
+    pub async fn send_reply(&self, channel_id: &str, reply: String) -> Result<(), RustyBotError> {
         let payload = json!(
         {
-        "channel": format!("{}", channel_id),
-        "text": format!("{}", reply)
+        "channel": channel_id.to_string(),
+        "text": reply
         });
         let _response = self
             .client
             .post(format!("{}/chat.postMessage", BASE_URL))
             .json(&payload)
             .send()
+            .await
             .map_err(|e| RustyBotError::InternalServerError(e.into()))?;
+        let txt = _response
+            .text()
+            .await
+            .map_err(|e| RustyBotError::InternalServerError(e.into()))?;
+        println!("{}", txt);
         Ok(())
     }
 }
