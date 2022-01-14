@@ -5,7 +5,6 @@ pub mod slack_conn;
 
 use crate::bot::on_message;
 use crate::error::RustyBotError;
-use futures::executor::block_on;
 use slack_morphism::prelude::*;
 use slack_morphism_hyper::*;
 use std::env;
@@ -28,9 +27,9 @@ async fn main() -> Result<(), RustyBotError> {
         SlackApiTokenValue(env::var("SLACK_APP_TOKEN").expect("SLACK_APP_TOKEN env var not found"));
     let app_token = SlackApiToken::new(app_token_value);
 
-    block_on(socket_mode_listener.listen_for(&app_token))?;
+    socket_mode_listener.listen_for(&app_token).await?;
 
-    block_on(socket_mode_listener.serve());
+    socket_mode_listener.serve().await;
 
     Ok(())
 }
