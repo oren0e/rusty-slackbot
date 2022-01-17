@@ -1,17 +1,22 @@
 use crate::error::RustyBotError;
 use crate::playground::{PlaygroundAnswer, PlaygroundRequest};
-use crate::slack_conn::SlackSendClient;
+use crate::slack_conn::CodeReplyTemplate;
 use regex::Regex;
 use slack_morphism::prelude::*;
 use slack_morphism_hyper::*;
+use std::env;
 use std::sync::Arc;
 
 pub async fn on_message(
     event: SlackPushEventCallback,
-    _client: Arc<SlackHyperClient>,
+    client: Arc<SlackHyperClient>,
     _states: Arc<SlackClientEventsUserState>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let slack_client = SlackSendClient::init().await?;
+    let token_value =
+        SlackApiTokenValue(env::var("SLACK_BOT_TOKEN").expect("SLACK_BOT_TOKEN env var not found"));
+    let token = SlackApiToken::new(token_value);
+    let session = client.open_session(&token);
+
     match event.event {
         SlackEventCallbackBody::Message(msg_event) => {
             println!("Matched message");
@@ -24,22 +29,29 @@ pub async fn on_message(
                     // code
                     if let Some(code) = has_code(&text) {
                         println!("Has code: {:?}", code);
-                        let response = eval_code(code).await?;
+                        let response =
+                            tokio::task::spawn_blocking(move || eval_code(code)).await??;
                         println!("Evaled code: {:?}", response);
-                        let _outcome = slack_client
-                            .send_code_reply(
-                                &channel_id.0,
-                                &response.link,
-                                response.playground_answer.stdout,
-                                response.playground_answer.stderr,
-                            )
-                            .await?;
+                        let reply_content = CodeReplyTemplate::new(
+                            &response.link,
+                            response.playground_answer.stdout,
+                            response.playground_answer.stderr,
+                        );
+                        let reply_request = SlackApiChatPostMessageRequest::new(
+                            channel_id,
+                            reply_content.render_template(),
+                        );
+                        let _response = session.chat_post_message(&reply_request).await;
+                        println!("{:?}", _response);
                         return Ok(());
                     }
                     // command
                     else if let Some(command) = has_command(&text) {
                         if let Some(output) = eval_command(command)? {
-                            let _outcome = slack_client.send_reply(&channel_id.0, output).await?;
+                            let reply_content = SlackMessageContent::new().with_text(output);
+                            let reply_request =
+                                SlackApiChatPostMessageRequest::new(channel_id, reply_content);
+                            let _response = session.chat_post_message(&reply_request).await;
                         }
                         return Ok(());
                     } else {
@@ -51,10 +63,11 @@ pub async fn on_message(
             Ok(())
         }
         SlackEventCallbackBody::AppMention(mention_event) => {
-            let channel_id = mention_event.channel.0;
-            let _outcome = slack_client
-                .send_reply(&channel_id, String::from("I'm alive, don't worry"))
-                .await?;
+            let channel_id = mention_event.channel;
+            let reply_content =
+                SlackMessageContent::new().with_text("I'm alive, don't worry".to_string());
+            let reply_request = SlackApiChatPostMessageRequest::new(channel_id, reply_content);
+            let _response = session.chat_post_message(&reply_request).await;
             Ok(())
         }
         _ => Ok(()),
@@ -69,7 +82,7 @@ fn eval_command(command: String) -> Result<Option<String>, RustyBotError> {
     }
 }
 
-async fn eval_code(code: Code) -> Result<PlaygroundAnswer, RustyBotError> {
+fn eval_code(code: Code) -> Result<PlaygroundAnswer, RustyBotError> {
     let request;
     if code.kind == "code".to_string() {
         request = PlaygroundRequest::new(code.text);
@@ -80,11 +93,12 @@ async fn eval_code(code: Code) -> Result<PlaygroundAnswer, RustyBotError> {
             command: code.kind.to_string(),
         });
     };
-    match request.execute().await {
+    let result = request.execute();
+    match result {
         Ok(res) => {
             let ans = PlaygroundAnswer {
                 playground_answer: res.playground_response,
-                link: request.create_share_link().await?,
+                link: request.create_share_link()?,
             };
             Ok(ans)
         }
