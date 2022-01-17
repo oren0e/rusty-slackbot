@@ -1,141 +1,45 @@
-use crate::error::RustyBotError;
-use reqwest::header;
-use reqwest::Client;
-use serde_json::json;
-use std::env;
+use slack_morphism::prelude::*;
 
-const BASE_URL: &str = "https://slack.com/api/";
-
-#[derive(Debug)]
-pub struct SlackSendClient {
-    client: Client,
+#[derive(Debug, Clone)]
+pub struct CodeReplyTemplate<'a> {
+    pub share_link: &'a str,
+    pub stdout: String,
+    pub stderr: String,
 }
 
-impl SlackSendClient {
-    pub async fn init() -> Result<Self, RustyBotError> {
-        let token = env::var("SLACK_TOKEN").expect("SLACK_TOKEN env var was not found");
-        let bearer = format!("Bearer {}", token);
-        let mut auth_value = header::HeaderValue::from_str(&bearer)
-            .map_err(|e| RustyBotError::InternalServerError(e.into()))?;
-        auth_value.set_sensitive(true);
-        let mut headers = header::HeaderMap::new();
-        headers.insert(header::AUTHORIZATION, auth_value);
-        let client = Client::builder()
-            .default_headers(headers)
-            .build()
-            .map_err(|e| RustyBotError::InternalServerError(e.into()))?;
-        Ok(Self { client })
-    }
-
-    pub async fn send_code_reply(
-        &self,
-        channel_id: &str,
-        share_link: &str,
-        stdout: String,
-        stderr: String,
-    ) -> Result<(), RustyBotError> {
-        let payload = json!(
-                    {
-            "channel": channel_id.to_string(),
-            "text": "Executing...",
-            "blocks": [
-                {
-                    "type": "header",
-                    "text": {
-                        "type": "plain_text",
-                        "text": "Rust Playground",
-                        "emoji": true
-                    }
-                },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": "Here is the code on Rust Playground"
-                    },
-                    "accessory": {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "text": "Click Me",
-                            "emoji": true
-                        },
-                        "value": "click_me_123",
-                        "url": share_link.to_string(),
-                        "action_id": "button-action"
-                    }
-                },
-                {
-                    "type": "context",
-                    "elements": [
-                        {
-                            "type": "plain_text",
-                            "text": "Stdout",
-                            "emoji": true
-                        }
-                    ]
-                },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": format!("```{}```", stdout)
-                    }
-                },
-                {
-                    "type": "divider"
-                },
-                {
-                    "type": "context",
-                    "elements": [
-                        {
-                            "type": "plain_text",
-                            "text": "Stderr",
-                            "emoji": true
-                        }
-                    ]
-                },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": format!("```{}```", stderr)
-                    }
-                }
-            ]
+impl<'a> CodeReplyTemplate<'a> {
+    pub fn new(share_link: &'a str, stdout: String, stderr: String) -> Self {
+        Self {
+            share_link,
+            stdout,
+            stderr,
         }
-                    );
-        let _response = self
-            .client
-            .post(format!("{}/chat.postMessage", BASE_URL))
-            .json(&payload)
-            .send()
-            .await
-            .map_err(|e| RustyBotError::InternalServerError(e.into()))?;
-        Ok(())
-    }
-
-    pub async fn send_reply(&self, channel_id: &str, reply: String) -> Result<(), RustyBotError> {
-        let payload = json!(
-        {
-        "channel": channel_id.to_string(),
-        "text": reply
-        });
-        let _response = self
-            .client
-            .post(format!("{}/chat.postMessage", BASE_URL))
-            .json(&payload)
-            .send()
-            .await
-            .map_err(|e| RustyBotError::InternalServerError(e.into()))?;
-        let txt = _response
-            .text()
-            .await
-            .map_err(|e| RustyBotError::InternalServerError(e.into()))?;
-        println!("{}", txt);
-        Ok(())
     }
 }
 
-// TODO:
-// 3. create tests using a mock server (httpmock crate)
+impl<'a> SlackMessageTemplate for CodeReplyTemplate<'a> {
+    fn render_template(&self) -> SlackMessageContent {
+        SlackMessageContent::new()
+            .with_text("Executing...".to_string())
+            .with_blocks(slack_blocks![
+                some_into(SlackHeaderBlock::new(SlackBlockText::Plain(
+                    SlackBlockPlainText::new("Rust Playground".to_string())
+                ))),
+                some_into(SlackActionsBlock::new(slack_blocks![some_into(
+                    SlackBlockButtonElement::new(
+                        SlackActionId("button-action".to_string()),
+                        pt!("Code")
+                    )
+                )])),
+                some_into(SlackContextBlock::new(vec![
+                    SlackContextBlockElement::Plain(SlackBlockPlainText::new("Stdout".to_string()))
+                ])),
+                some_into(SlackSectionBlock::new().with_text(md!("```{}```", self.stdout))),
+                some_into(SlackDividerBlock::new()),
+                some_into(SlackContextBlock::new(vec![
+                    SlackContextBlockElement::Plain(SlackBlockPlainText::new("Stderr".to_string()))
+                ])),
+                some_into(SlackSectionBlock::new().with_text(md!("```{}```", self.stderr)))
+            ])
+    }
+}
