@@ -37,6 +37,12 @@ async fn process_message(
                     // code
                     if let Some(code) = has_code(&text) {
                         println!("Has code: {:?}", code);
+                        // print "executing"
+                        let reply_content =
+                            SlackMessageContent::new().with_text("Executing...".to_owned());
+                        let reply_request =
+                            SlackApiChatPostMessageRequest::new(channel_id.clone(), reply_content);
+                        let _response = session.chat_post_message(&reply_request).await;
                         let response = eval_code(code)
                             .await
                             .map_err(|e| RustyBotError::InternalServerError(e.into()))?;
