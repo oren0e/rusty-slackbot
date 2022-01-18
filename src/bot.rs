@@ -27,7 +27,6 @@ async fn process_message(
 
     match event.event {
         SlackEventCallbackBody::Message(msg_event) => {
-            println!("Matched message");
             let channel = msg_event.origin.channel;
             let content = msg_event.content;
             if let Some(channel_id) = channel {
@@ -36,7 +35,6 @@ async fn process_message(
                     // start matching the has_ functions
                     // code
                     if let Some(code) = has_code(&text) {
-                        println!("Has code: {:?}", code);
                         // print "executing"
                         let reply_content =
                             SlackMessageContent::new().with_text("Executing...".to_owned());
@@ -46,7 +44,6 @@ async fn process_message(
                         let response = eval_code(code)
                             .await
                             .map_err(|e| RustyBotError::InternalServerError(e.into()))?;
-                        println!("Evaled code: {:?}", response);
                         let reply_content = CodeReplyTemplate::new(
                             &response.link,
                             response.playground_answer.stdout,
@@ -57,7 +54,6 @@ async fn process_message(
                             reply_content.render_template(),
                         );
                         let _response = session.chat_post_message(&reply_request).await;
-                        println!("{:?}", _response);
                         return Ok(());
                     }
                     // command
