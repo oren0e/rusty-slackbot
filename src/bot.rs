@@ -155,3 +155,29 @@ fn has_command(message: &Option<String>) -> Option<String> {
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_has_command() {
+        let message_with_command = &Some("!help book".to_owned());
+        let message_without_command = &Some("nothing here".to_owned());
+        assert_eq!(has_command(message_with_command), Some("book".to_owned()));
+        assert!(has_command(message_without_command).is_none());
+    }
+
+    #[test]
+    fn test_has_code() {
+        let message_with_code = &Some("!eval\n```this is code```".to_owned());
+        let message_without_code = &Some("!bla\n```this is not code```".to_owned());
+
+        let ans_with_code = has_code(message_with_code).unwrap();
+        assert_eq!(ans_with_code.kind, "eval".to_owned());
+        assert_eq!(ans_with_code.text, "this is code".to_owned());
+
+        let ans_without_code = has_code(message_without_code);
+        assert!(ans_without_code.is_none());
+    }
+}
