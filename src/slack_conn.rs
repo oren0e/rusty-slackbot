@@ -30,6 +30,7 @@ impl<'a> SlackMessageTemplate for CodeReplyTemplate<'a> {
                         SlackActionId("button-action".to_string()),
                         pt!("Code")
                     )
+                    .with_url(self.share_link.to_string())
                 )])),
                 some_into(SlackContextBlock::new(vec![
                     SlackContextBlockElement::Plain(SlackBlockPlainText::new("Stdout".to_string()))
