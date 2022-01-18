@@ -180,4 +180,22 @@ mod tests {
         let ans_without_code = has_code(message_without_code);
         assert!(ans_without_code.is_none());
     }
+
+    #[test]
+    fn test_eval_command() {
+        let command_docs = "docs".to_owned();
+        let command_book = "book".to_owned();
+
+        let expected_reply_docs = "https://doc.rust-lang.org/".to_owned();
+        let expected_reply_book = "https://doc.rust-lang.org/book/".to_owned();
+        let expected_reply_other = "*Available commands*\n!code - for complete code blocks\n!eval - for evaluating chunks that can fit in main function\n!help [docs, book] - links to classic rust material\n_Yours truely, Ferris_".to_owned();
+
+        let reply_docs = eval_command(command_docs).unwrap().unwrap();
+        let reply_book = eval_command(command_book).unwrap().unwrap();
+        let reply_other = eval_command("something".to_owned()).unwrap().unwrap();
+
+        assert_eq!(expected_reply_docs, reply_docs);
+        assert_eq!(expected_reply_book, reply_book);
+        assert_eq!(expected_reply_other, reply_other);
+    }
 }
