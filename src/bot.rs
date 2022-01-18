@@ -37,9 +37,9 @@ async fn process_message(
                     // code
                     if let Some(code) = has_code(&text) {
                         println!("Has code: {:?}", code);
-                        let response = tokio::task::spawn_blocking(move || eval_code(code))
+                        let response = eval_code(code)
                             .await
-                            .map_err(|e| RustyBotError::InternalServerError(e.into()))??;
+                            .map_err(|e| RustyBotError::InternalServerError(e.into()))?;
                         println!("Evaled code: {:?}", response);
                         let reply_content = CodeReplyTemplate::new(
                             &response.link,
@@ -91,7 +91,7 @@ fn eval_command(command: String) -> Result<Option<String>, RustyBotError> {
     }
 }
 
-fn eval_code(code: Code) -> Result<PlaygroundAnswer, RustyBotError> {
+async fn eval_code(code: Code) -> Result<PlaygroundAnswer, RustyBotError> {
     let request;
     if code.kind == "code".to_string() {
         request = PlaygroundRequest::new(code.text);
@@ -102,12 +102,12 @@ fn eval_code(code: Code) -> Result<PlaygroundAnswer, RustyBotError> {
             command: code.kind.to_string(),
         });
     };
-    let result = request.execute();
+    let result = request.execute().await;
     match result {
         Ok(res) => {
             let ans = PlaygroundAnswer {
                 playground_answer: res.playground_response,
-                link: request.create_share_link()?,
+                link: request.create_share_link().await?,
             };
             Ok(ans)
         }
