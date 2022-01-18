@@ -1,4 +1,5 @@
 use crate::error::RustyBotError;
+use html_escape::decode_html_entities;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -28,6 +29,7 @@ pub struct PlaygroundResponse {
     pub stderr: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct ShareResponse {
     pub id: String,
@@ -63,6 +65,18 @@ impl PlaygroundRequest {
             edition: "2021",
             mode: "debug",
             tests: false,
+        }
+    }
+
+    pub fn escape_html(&self) -> Self {
+        Self {
+            backtrace: self.backtrace,
+            channel: self.channel,
+            code: decode_html_entities(&self.code).as_ref().to_owned(),
+            crate_type: self.crate_type,
+            edition: self.edition,
+            mode: self.mode,
+            tests: self.tests,
         }
     }
 

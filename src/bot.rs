@@ -1,7 +1,6 @@
 use crate::error::RustyBotError;
 use crate::playground::{PlaygroundAnswer, PlaygroundRequest};
 use crate::slack_conn::CodeReplyTemplate;
-use html_escape::decode_html_entities;
 use regex::Regex;
 use slack_morphism::prelude::*;
 use slack_morphism_hyper::*;
@@ -94,10 +93,10 @@ fn eval_command(command: String) -> Result<Option<String>, RustyBotError> {
 
 async fn eval_code(code: Code) -> Result<PlaygroundAnswer, RustyBotError> {
     let request;
-    if code.kind == "code".to_owned() {
-        request = PlaygroundRequest::new(decode_html_entities(&code.text).as_ref().to_owned());
-    } else if code.kind == "eval".to_owned() {
-        request = PlaygroundRequest::new_eval(decode_html_entities(&code.text).as_ref().to_owned());
+    if code.kind == *"code" {
+        request = PlaygroundRequest::new(code.text).escape_html();
+    } else if code.kind == *"eval" {
+        request = PlaygroundRequest::new_eval(code.text).escape_html();
     } else {
         return Err(RustyBotError::InvalidBotCommand {
             command: code.kind.to_owned(),
@@ -127,13 +126,10 @@ fn has_code(message: &Option<String>) -> Option<Code> {
         Some(ref text) => {
             let re = Regex::new(r"!(?P<kind>code|eval)\n```?(?s:(?P<code>.*?))```")
                 .expect("code regex should not fail");
-            let code_result = match re.captures(text) {
-                Some(capture) => Some(Code {
-                    kind: String::from(&capture["kind"]),
-                    text: String::from(&capture["code"]),
-                }),
-                _ => None,
-            };
+            let code_result = re.captures(text).map(|capture| Code {
+                kind: String::from(&capture["kind"]),
+                text: String::from(&capture["code"]),
+            });
             code_result
         }
         _ => None,
@@ -145,10 +141,9 @@ fn has_command(message: &Option<String>) -> Option<String> {
         Some(ref text) => {
             let re =
                 Regex::new(r"!help\s(?P<command>.*?)$").expect("command regex should not fail");
-            let command_result = match re.captures(text) {
-                Some(capture) => Some(String::from(&capture["command"])),
-                _ => None,
-            };
+            let command_result = re
+                .captures(text)
+                .map(|capture| String::from(&capture["command"]));
             if command_result == Some("".to_owned()) {
                 None
             } else {
