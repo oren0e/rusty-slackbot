@@ -12,6 +12,14 @@ pub async fn on_message(
     client: Arc<SlackHyperClient>,
     _states: Arc<SlackClientEventsUserState>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    tokio::spawn(async move { process_message(client, event).await });
+    Ok(())
+}
+
+async fn process_message(
+    client: Arc<SlackHyperClient>,
+    event: SlackPushEventCallback,
+) -> Result<(), RustyBotError> {
     let token_value =
         SlackApiTokenValue(env::var("SLACK_BOT_TOKEN").expect("SLACK_BOT_TOKEN env var not found"));
     let token = SlackApiToken::new(token_value);
@@ -29,8 +37,9 @@ pub async fn on_message(
                     // code
                     if let Some(code) = has_code(&text) {
                         println!("Has code: {:?}", code);
-                        let response =
-                            tokio::task::spawn_blocking(move || eval_code(code)).await??;
+                        let response = tokio::task::spawn_blocking(move || eval_code(code))
+                            .await
+                            .map_err(|e| RustyBotError::InternalServerError(e.into()))??;
                         println!("Evaled code: {:?}", response);
                         let reply_content = CodeReplyTemplate::new(
                             &response.link,
@@ -78,7 +87,7 @@ fn eval_command(command: String) -> Result<Option<String>, RustyBotError> {
     match command.to_lowercase().as_str() {
         "docs" => Ok(Some("https://doc.rust-lang.org/".to_owned())),
         "book" => Ok(Some("https://doc.rust-lang.org/book/".to_owned())),
-        _ => Ok(None),
+        _ => Ok(Some("*Available commands*\n!code - for complete code blocks\n!eval - for evaluating chunks that can fit in main function\n!help [docs, book] - links to classic rust material\n_Yours truely, Ferris_".to_owned())),
     }
 }
 
@@ -134,7 +143,7 @@ fn has_command(message: &Option<String>) -> Option<String> {
     match *message {
         Some(ref text) => {
             let re =
-                Regex::new(r"!help\n(?P<command>.*?)$").expect("command regex should not fail");
+                Regex::new(r"!help\s(?P<command>.*?)$").expect("command regex should not fail");
             let command_result = match re.captures(text) {
                 Some(capture) => Some(String::from(&capture["command"])),
                 _ => None,
