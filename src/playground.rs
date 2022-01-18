@@ -73,7 +73,7 @@ impl PlaygroundRequest {
             .send()
             .await
             .map_err(|e| RustyBotError::InternalServerError(e.into()))?;
-        let status_code = response.status().as_str().to_string();
+        let status_code = response.status().as_str().to_owned();
         let playground_response: PlaygroundResponse = serde_json::from_str(
             &response
                 .text()

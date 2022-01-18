@@ -75,7 +75,7 @@ async fn process_message(
         SlackEventCallbackBody::AppMention(mention_event) => {
             let channel_id = mention_event.channel;
             let reply_content =
-                SlackMessageContent::new().with_text("I'm alive, don't worry".to_string());
+                SlackMessageContent::new().with_text("I'm alive, don't worry".to_owned());
             let reply_request = SlackApiChatPostMessageRequest::new(channel_id, reply_content);
             let _response = session.chat_post_message(&reply_request).await;
             Ok(())
@@ -94,14 +94,13 @@ fn eval_command(command: String) -> Result<Option<String>, RustyBotError> {
 
 async fn eval_code(code: Code) -> Result<PlaygroundAnswer, RustyBotError> {
     let request;
-    if code.kind == "code".to_string() {
-        request = PlaygroundRequest::new(decode_html_entities(&code.text).as_ref().to_string());
-    } else if code.kind == "eval".to_string() {
-        request =
-            PlaygroundRequest::new_eval(decode_html_entities(&code.text).as_ref().to_string());
+    if code.kind == "code".to_owned() {
+        request = PlaygroundRequest::new(decode_html_entities(&code.text).as_ref().to_owned());
+    } else if code.kind == "eval".to_owned() {
+        request = PlaygroundRequest::new_eval(decode_html_entities(&code.text).as_ref().to_owned());
     } else {
         return Err(RustyBotError::InvalidBotCommand {
-            command: code.kind.to_string(),
+            command: code.kind.to_owned(),
         });
     };
     let result = request.execute().await;
@@ -150,7 +149,7 @@ fn has_command(message: &Option<String>) -> Option<String> {
                 Some(capture) => Some(String::from(&capture["command"])),
                 _ => None,
             };
-            if command_result == Some("".to_string()) {
+            if command_result == Some("".to_owned()) {
                 None
             } else {
                 command_result
