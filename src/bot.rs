@@ -1,6 +1,7 @@
 use crate::error::RustyBotError;
 use crate::playground::{PlaygroundAnswer, PlaygroundRequest};
 use crate::slack_conn::CodeReplyTemplate;
+use html_escape::decode_html_entities;
 use regex::Regex;
 use slack_morphism::prelude::*;
 use slack_morphism_hyper::*;
@@ -94,9 +95,10 @@ fn eval_command(command: String) -> Result<Option<String>, RustyBotError> {
 async fn eval_code(code: Code) -> Result<PlaygroundAnswer, RustyBotError> {
     let request;
     if code.kind == "code".to_string() {
-        request = PlaygroundRequest::new(code.text);
+        request = PlaygroundRequest::new(decode_html_entities(&code.text).as_ref().to_string());
     } else if code.kind == "eval".to_string() {
-        request = PlaygroundRequest::new_eval(code.text);
+        request =
+            PlaygroundRequest::new_eval(decode_html_entities(&code.text).as_ref().to_string());
     } else {
         return Err(RustyBotError::InvalidBotCommand {
             command: code.kind.to_string(),
