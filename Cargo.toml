@@ -21,3 +21,6 @@ slack-morphism-hyper = "0.24"
 tokio = { version = "1.15.0", features = ["rt"] }
 futures = "0.3.19"
 html-escape = "0.2.9"
+
+[dev-dependencies]
+httpmock = "0.6.6"
