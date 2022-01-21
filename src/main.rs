@@ -1,10 +1,5 @@
-pub mod bot;
-pub mod error;
-pub mod playground;
-pub mod slack_conn;
-
-use crate::bot::on_message;
-use crate::error::RustyBotError;
+use rusty_slackbot::bot::on_message;
+use rusty_slackbot::error::RustyBotError;
 use slack_morphism::prelude::*;
 use slack_morphism_hyper::*;
 use std::env;
