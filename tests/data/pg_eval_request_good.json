@@ -1,0 +1,9 @@
+{
+  "channel": "stable",
+  "mode": "debug",
+  "edition": "2021",
+  "crateType": "bin",
+  "tests": false,
+  "code": "println!(\"Hello World\");",
+  "backtrace": false
+}
