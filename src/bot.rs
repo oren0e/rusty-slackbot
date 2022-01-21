@@ -24,6 +24,7 @@ async fn process_message(
         SlackApiTokenValue(env::var("SLACK_BOT_TOKEN").expect("SLACK_BOT_TOKEN env var not found"));
     let token = SlackApiToken::new(token_value);
     let session = client.open_session(&token);
+    let playground_url = env::var("PLAYGROUND_URL").expect("PLAYGROUND_URL env var not found");
 
     match event.event {
         SlackEventCallbackBody::Message(msg_event) => {
@@ -41,7 +42,7 @@ async fn process_message(
                         let reply_request =
                             SlackApiChatPostMessageRequest::new(channel_id.clone(), reply_content);
                         let _response = session.chat_post_message(&reply_request).await;
-                        let response = eval_code(code)
+                        let response = eval_code(code, &playground_url)
                             .await
                             .map_err(|e| RustyBotError::InternalServerError(e.into()))?;
                         let reply_content = CodeReplyTemplate::new(
@@ -93,7 +94,7 @@ fn eval_command(command: String) -> Result<Option<String>, RustyBotError> {
     }
 }
 
-async fn eval_code(code: Code) -> Result<PlaygroundAnswer, RustyBotError> {
+async fn eval_code(code: Code, playground_url: &str) -> Result<PlaygroundAnswer, RustyBotError> {
     let request;
     if code.kind == *"code" {
         request = PlaygroundRequest::new(code.text).escape_html();
@@ -104,12 +105,12 @@ async fn eval_code(code: Code) -> Result<PlaygroundAnswer, RustyBotError> {
             command: code.kind.to_owned(),
         });
     };
-    let result = request.execute().await;
+    let result = request.execute(playground_url).await;
     match result {
         Ok(res) => {
             let ans = PlaygroundAnswer {
                 playground_answer: res.playground_response,
-                link: request.create_share_link().await?,
+                link: request.create_share_link(playground_url).await?,
             };
             Ok(ans)
         }
