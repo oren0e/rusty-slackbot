@@ -24,3 +24,4 @@ html-escape = "0.2.9"
 
 [dev-dependencies]
 httpmock = "0.6.6"
+rstest = "0.12.0"
