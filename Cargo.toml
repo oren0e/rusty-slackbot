@@ -19,7 +19,6 @@ slack-morphism = "0.24"
 slack-morphism-models = "0.24"
 slack-morphism-hyper = "0.24"
 tokio = { version = "1.15.0", features = ["rt"] }
-futures = "0.3.19"
 html-escape = "0.2.9"
 
 [dev-dependencies]
