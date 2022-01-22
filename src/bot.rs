@@ -102,6 +102,7 @@ async fn eval_code(code: Code, playground_url: &str) -> Result<PlaygroundAnswer,
         request = PlaygroundRequest::new_eval(code.text).escape_html();
     } else {
         return Err(RustyBotError::InvalidBotCommand {
+            // never really reached because of has_code matching
             command: code.kind.to_owned(),
         });
     };
