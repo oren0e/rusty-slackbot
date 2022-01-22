@@ -1,6 +1,6 @@
 use httpmock::prelude::*;
 use rstest::*;
-use rusty_slackbot::playground::{PlaygroundRequest, PlaygroundResponse};
+use rusty_slackbot::playground::{PlaygroundRequest, PlaygroundResponse, ShareResponse};
 use serde_json::json;
 use serde_json::Value;
 use std::fs;
@@ -27,6 +27,13 @@ fn good_code() -> String {
 #[fixture]
 fn bad_code() -> String {
     "println!(\"Hello World\"".to_owned()
+}
+
+#[fixture]
+fn share_link_response() -> Value {
+    let s = fs::read_to_string("tests/data/pg_response_share_link.json")
+        .expect("Error: share_link_response read json file failed in tests");
+    serde_json::from_str(&s).expect("Failed parsing json in share_link_response in tests")
 }
 
 #[rstest]
@@ -73,6 +80,36 @@ async fn test_eval_execute(#[case] code: String, #[case] raw_response: Value) {
         expected_response.stderr
     );
 }
+
+#[rstest]
+#[tokio::test]
+async fn test_create_share_link(good_code: String, share_link_response: Value) {
+    let payload = json!({ "code": format!("fn main() {{{}}}", good_code) });
+    let parsed_response: ShareResponse = serde_json::from_value(share_link_response.clone())
+        .expect("Failed to convert from Value to ShareResponse in test_create_share_link");
+    let request = PlaygroundRequest::new_eval(good_code).escape_html();
+    let server = MockServer::start_async().await;
+    let mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/meta/gist/")
+            .header("Content-Type", "application/json")
+            .json_body(payload);
+        then.status(200).json_body(share_link_response);
+    });
+    let response = request.create_share_link(&server.base_url()).await.unwrap();
+
+    mock.assert();
+    assert_eq!(
+        format!(
+            "https://play.rust-lang.org/?version={}&mode=debug&edition={}&gist={}",
+            request.get_channel(),
+            request.get_edition(),
+            parsed_response.id
+        ),
+        response
+    );
+}
+
 // TODO:
 // 1. Write test for !code
 // 2. Write test for create_share_link

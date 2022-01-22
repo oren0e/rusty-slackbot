@@ -9,7 +9,7 @@ use serde_json::json;
 pub struct PlaygroundRequest {
     backtrace: bool,
     channel: &'static str,
-    pub code: String,
+    code: String,
     crate_type: &'static str,
     edition: &'static str,
     mode: &'static str,
@@ -31,7 +31,7 @@ pub struct PlaygroundResponse {
 
 #[allow(dead_code)]
 #[derive(Debug, Deserialize)]
-struct ShareResponse {
+pub struct ShareResponse {
     pub id: String,
     pub url: String,
 }
@@ -53,6 +53,18 @@ impl PlaygroundRequest {
             mode: "debug",
             tests: false,
         }
+    }
+
+    pub fn get_code(&self) -> String {
+        self.code.clone()
+    }
+
+    pub fn get_channel(&self) -> String {
+        self.channel.to_owned()
+    }
+
+    pub fn get_edition(&self) -> String {
+        self.edition.to_owned()
     }
 
     pub fn new_eval(code: String) -> Self {
