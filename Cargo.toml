@@ -23,7 +23,7 @@ html-escape = "0.2.9"
 tracing = "0.1.29"
 tracing-appender = "0.2.0"
 tracing-futures = "0.2.5"
-tracing-subscriber = { version = "0.3.5", features = ["env-filter", "std", "fmt", "json", "ansi"] }
+tracing-subscriber = { version = "0.3.5", features = ["env-filter", "std", "fmt", "ansi"] }
 tracing-log = "0.1.2"
 uuid = { version = "0.8.2", features = ["v4", "serde"] }
 http = "0.2.6"
