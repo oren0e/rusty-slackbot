@@ -3,6 +3,7 @@ use html_escape::decode_html_entities;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use tracing::{debug, error};
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -93,20 +94,31 @@ impl PlaygroundRequest {
     }
 
     pub async fn execute(&self, playground_url: &str) -> Result<Response, RustyBotError> {
+        debug!("execute function start with base URL: {}", playground_url);
         let response = Client::new()
             .post(format!("{}/execute", playground_url))
             .json(&self)
             .send()
             .await
-            .map_err(|e| RustyBotError::InternalServerError(e.into()))?;
+            .map_err(|e| {
+                error!(
+                    "Error: {}\nwhen sending request to base URL {} with payload {:?}",
+                    e, playground_url, &self
+                );
+                RustyBotError::InternalServerError(e.into())
+            })?;
         let status_code = response.status().as_str().to_owned();
         let playground_response: PlaygroundResponse = serde_json::from_str(
             &response
                 .text()
                 .await
-                .map_err(|e| RustyBotError::InternalServerError(e.into()))?,
+                .map_err(|e| {
+                    error!("Error: {}\n when trying to retreive body text of response in execute function to base URL: {}", e, playground_url);
+                    RustyBotError::InternalServerError(e.into())})?,
         )
-        .map_err(|e| RustyBotError::InternalServerError(e.into()))?;
+        .map_err(|e| {
+            error!("Error: {}\n when trying to convert response body text to JSON format in execute function to base URL: {}", e, playground_url);
+            RustyBotError::InternalServerError(e.into())})?;
         let ans = Response {
             status_code,
             playground_response,
@@ -115,15 +127,35 @@ impl PlaygroundRequest {
     }
 
     pub async fn create_share_link(&self, playground_url: &str) -> Result<String, RustyBotError> {
+        debug!(
+            "create_share_link function start with base URL: {}",
+            playground_url
+        );
         let share_response: ShareResponse = Client::new()
             .post(format!("{}/meta/gist/", playground_url))
             .json(&json!({"code": self.code}))
             .send()
             .await
-            .map_err(|e| RustyBotError::InternalServerError(e.into()))?
+            .map_err(|e| {
+                error!(
+                    "Error: {}\n when sending request to create share link to base URL {} with payload {:?}",
+                    e, playground_url,
+                    json!({"code": self.code})
+                );
+                RustyBotError::InternalServerError(e.into())
+            })?
             .json()
             .await
-            .map_err(|e| RustyBotError::InternalServerError(e.into()))?;
+            .map_err(|e| {
+                error!("Error: {}\n when trying to deserialize response of create_share_link to ShareResponse. base URL of request: {}", e, playground_url);
+                RustyBotError::InternalServerError(e.into())})?;
+        debug!(
+            "Share link produced: {}",
+            format!(
+                "https://play.rust-lang.org/?version={}&mode=debug&edition={}&gist={}",
+                self.channel, self.edition, share_response.id
+            )
+        );
         Ok(format!(
             "https://play.rust-lang.org/?version={}&mode=debug&edition={}&gist={}",
             self.channel, self.edition, share_response.id
