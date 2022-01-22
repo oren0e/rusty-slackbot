@@ -6,6 +6,8 @@ use slack_morphism::prelude::*;
 use slack_morphism_hyper::*;
 use std::env;
 use std::sync::Arc;
+use tracing::{debug, error, instrument};
+use uuid::Uuid;
 
 pub async fn on_message(
     event: SlackPushEventCallback,
@@ -16,6 +18,21 @@ pub async fn on_message(
     Ok(())
 }
 
+pub fn error_handler(
+    err: Box<dyn std::error::Error + Send + Sync>,
+    _client: Arc<SlackHyperClient>,
+    _states: Arc<SlackClientEventsUserState>,
+) -> http::StatusCode {
+    error!("{:#?}", err);
+    http::StatusCode::OK
+}
+
+#[instrument(
+    skip(client, event),
+    fields(
+        request_id = %Uuid::new_v4()
+        )
+    )]
 async fn process_message(
     client: Arc<SlackHyperClient>,
     event: SlackPushEventCallback,
@@ -28,42 +45,67 @@ async fn process_message(
 
     match event.event {
         SlackEventCallbackBody::Message(msg_event) => {
+            debug!("Matched message");
             let channel = msg_event.origin.channel;
             let content = msg_event.content;
             if let Some(channel_id) = channel {
                 if let Some(msg_content) = content {
+                    debug!(
+                        "Found channel {} and content {:?}",
+                        channel_id, msg_content.text
+                    );
                     let text = msg_content.text;
+                    debug!("Start matching has_ functions");
                     // start matching the has_ functions
                     // code
                     if let Some(code) = has_code(&text) {
+                        debug!("Found code: {:?}", code);
                         // print "executing"
                         let reply_content =
                             SlackMessageContent::new().with_text("Executing...".to_owned());
                         let reply_request =
                             SlackApiChatPostMessageRequest::new(channel_id.clone(), reply_content);
                         let _response = session.chat_post_message(&reply_request).await;
-                        let response = eval_code(code, &playground_url)
+                        let response = eval_code(&code, &playground_url)
                             .await
-                            .map_err(|e| RustyBotError::InternalServerError(e.into()))?;
+                            .map_err(|e| {
+                                error!("Error: {}\n when executing eval_code with code type: {}\ncode text: {}\nbase URL {}", e, code.kind, code.text, playground_url);
+                                RustyBotError::InternalServerError(e.into())})?;
                         let reply_content = CodeReplyTemplate::new(
                             &response.link,
+                            response.playground_answer.stdout.clone(),
+                            response.playground_answer.stderr.clone(),
+                        );
+                        debug!(
+                            "Reply produced\nlink: {}\nstdout: {}\n stderr: {}",
+                            &response.link,
                             response.playground_answer.stdout,
-                            response.playground_answer.stderr,
+                            response.playground_answer.stderr
                         );
                         let reply_request = SlackApiChatPostMessageRequest::new(
                             channel_id,
                             reply_content.render_template(),
                         );
                         let _response = session.chat_post_message(&reply_request).await;
+                        debug!(
+                            "Response from session.chat_post_message of code: {:?}",
+                            _response
+                        );
                         return Ok(());
                     }
                     // command
                     else if let Some(command) = has_command(&text) {
-                        if let Some(output) = eval_command(command)? {
+                        debug!("Found command: {}", command);
+                        if let Some(output) = eval_command(command.clone()) {
+                            debug!("command {} produced output {}", command, output);
                             let reply_content = SlackMessageContent::new().with_text(output);
                             let reply_request =
                                 SlackApiChatPostMessageRequest::new(channel_id, reply_content);
                             let _response = session.chat_post_message(&reply_request).await;
+                            debug!(
+                                "Response from session.chat_post_message of command: {:?}",
+                                _response
+                            );
                         }
                         return Ok(());
                     } else {
@@ -75,32 +117,39 @@ async fn process_message(
             Ok(())
         }
         SlackEventCallbackBody::AppMention(mention_event) => {
+            debug!("Matched mention");
             let channel_id = mention_event.channel;
+            debug!("channel_id: {}", channel_id);
             let reply_content =
                 SlackMessageContent::new().with_text("I'm alive, don't worry".to_owned());
             let reply_request = SlackApiChatPostMessageRequest::new(channel_id, reply_content);
             let _response = session.chat_post_message(&reply_request).await;
+            debug!(
+                "Response from session.chat_post_message of mention: {:?}",
+                _response
+            );
             Ok(())
         }
         _ => Ok(()),
     }
 }
 
-fn eval_command(command: String) -> Result<Option<String>, RustyBotError> {
+fn eval_command(command: String) -> Option<String> {
     match command.to_lowercase().as_str() {
-        "docs" => Ok(Some("https://doc.rust-lang.org/".to_owned())),
-        "book" => Ok(Some("https://doc.rust-lang.org/book/".to_owned())),
-        _ => Ok(Some("*Available commands*\n!code - for complete code blocks\n!eval - for evaluating chunks that can fit in main function\n!help [docs, book] - links to classic rust material\n_Yours truely, Ferris_".to_owned())),
+        "docs" => Some("https://doc.rust-lang.org/".to_owned()),
+        "book" => Some("https://doc.rust-lang.org/book/".to_owned()),
+        _ => Some("*Available commands*\n!code - for complete code blocks\n!eval - for evaluating chunks that can fit in main function\n!help [docs, book] - links to classic rust material\n_Yours truely, Ferris_".to_owned()),
     }
 }
 
-async fn eval_code(code: Code, playground_url: &str) -> Result<PlaygroundAnswer, RustyBotError> {
+async fn eval_code(code: &Code, playground_url: &str) -> Result<PlaygroundAnswer, RustyBotError> {
     let request;
     if code.kind == *"code" {
-        request = PlaygroundRequest::new(code.text).escape_html();
+        request = PlaygroundRequest::new(code.text.clone()).escape_html();
     } else if code.kind == *"eval" {
-        request = PlaygroundRequest::new_eval(code.text).escape_html();
+        request = PlaygroundRequest::new_eval(code.text.clone()).escape_html();
     } else {
+        error!("Error: InvalidBotCommand reached! code kind: {}", code.kind);
         return Err(RustyBotError::InvalidBotCommand {
             // never really reached because of has_code matching
             command: code.kind.to_owned(),
@@ -115,7 +164,13 @@ async fn eval_code(code: Code, playground_url: &str) -> Result<PlaygroundAnswer,
             };
             Ok(ans)
         }
-        Err(e) => Err(RustyBotError::InternalServerError(e.into())),
+        Err(e) => {
+            error!(
+                "Error: {}\nerror during eval_code when trying to run execute function on request to base URL: {}",
+                e, playground_url
+            );
+            Err(RustyBotError::InternalServerError(e.into()))
+        }
     }
 }
 
@@ -192,9 +247,9 @@ mod tests {
         let expected_reply_book = "https://doc.rust-lang.org/book/".to_owned();
         let expected_reply_other = "*Available commands*\n!code - for complete code blocks\n!eval - for evaluating chunks that can fit in main function\n!help [docs, book] - links to classic rust material\n_Yours truely, Ferris_".to_owned();
 
-        let reply_docs = eval_command(command_docs).unwrap().unwrap();
-        let reply_book = eval_command(command_book).unwrap().unwrap();
-        let reply_other = eval_command("something".to_owned()).unwrap().unwrap();
+        let reply_docs = eval_command(command_docs).unwrap();
+        let reply_book = eval_command(command_book).unwrap();
+        let reply_other = eval_command("something".to_owned()).unwrap();
 
         assert_eq!(expected_reply_docs, reply_docs);
         assert_eq!(expected_reply_book, reply_book);
