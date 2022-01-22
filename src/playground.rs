@@ -1,9 +1,10 @@
 use crate::error::RustyBotError;
-use reqwest::blocking::Client;
+use html_escape::decode_html_entities;
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct PlaygroundRequest {
     backtrace: bool,
@@ -21,17 +22,18 @@ pub struct Response {
     pub playground_response: PlaygroundResponse,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct PlaygroundResponse {
     pub success: bool,
     pub stdout: String,
     pub stderr: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
-struct ShareResponse {
+pub struct ShareResponse {
     pub id: String,
-    pub _url: String,
+    pub url: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -53,6 +55,18 @@ impl PlaygroundRequest {
         }
     }
 
+    pub fn get_code(&self) -> String {
+        self.code.clone()
+    }
+
+    pub fn get_channel(&self) -> String {
+        self.channel.to_owned()
+    }
+
+    pub fn get_edition(&self) -> String {
+        self.edition.to_owned()
+    }
+
     pub fn new_eval(code: String) -> Self {
         let code_to_eval = format!("fn main() {{{}}}", code);
         Self {
@@ -66,16 +80,30 @@ impl PlaygroundRequest {
         }
     }
 
-    pub fn execute(&self) -> Result<Response, RustyBotError> {
+    pub fn escape_html(&self) -> Self {
+        Self {
+            backtrace: self.backtrace,
+            channel: self.channel,
+            code: decode_html_entities(&self.code).as_ref().to_owned(),
+            crate_type: self.crate_type,
+            edition: self.edition,
+            mode: self.mode,
+            tests: self.tests,
+        }
+    }
+
+    pub async fn execute(&self, playground_url: &str) -> Result<Response, RustyBotError> {
         let response = Client::new()
-            .post("https://play.rust-lang.org/execute")
-            .json(self)
+            .post(format!("{}/execute", playground_url))
+            .json(&self)
             .send()
+            .await
             .map_err(|e| RustyBotError::InternalServerError(e.into()))?;
-        let status_code = response.status().as_str().to_string();
+        let status_code = response.status().as_str().to_owned();
         let playground_response: PlaygroundResponse = serde_json::from_str(
             &response
                 .text()
+                .await
                 .map_err(|e| RustyBotError::InternalServerError(e.into()))?,
         )
         .map_err(|e| RustyBotError::InternalServerError(e.into()))?;
@@ -86,66 +114,19 @@ impl PlaygroundRequest {
         Ok(ans)
     }
 
-    pub fn create_share_link(&self) -> Result<String, RustyBotError> {
+    pub async fn create_share_link(&self, playground_url: &str) -> Result<String, RustyBotError> {
         let share_response: ShareResponse = Client::new()
-            .post("https://play.rust-lang.org/meta/gist/")
+            .post(format!("{}/meta/gist/", playground_url))
             .json(&json!({"code": self.code}))
             .send()
+            .await
             .map_err(|e| RustyBotError::InternalServerError(e.into()))?
             .json()
+            .await
             .map_err(|e| RustyBotError::InternalServerError(e.into()))?;
         Ok(format!(
             "https://play.rust-lang.org/?version={}&mode=debug&edition={}&gist={}",
             self.channel, self.edition, share_response.id
         ))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_execute_working_code() {
-        let code = String::from("fn main() {\n\tprintln!(\"Hello, world!\");\n}");
-
-        let request = PlaygroundRequest::new(code);
-        let response = request.execute().unwrap();
-
-        assert_eq!(response.status_code, "200");
-        assert!(response
-            .playground_response
-            .stdout
-            .contains("Hello, world!"));
-    }
-
-    #[test]
-    fn test_execute_not_working_code() {
-        let code = String::from("fn main() {\n\tprintln!(\"Hello, world!\");\n"); // missing "}"
-
-        let request = PlaygroundRequest::new(code);
-        let response = request.execute().unwrap();
-
-        assert_eq!(response.status_code, "200");
-        assert!(!response.playground_response.success);
-        assert_eq!(response.playground_response.stdout, "");
-    }
-
-    #[test]
-    fn test_create_share_link() {
-        let code = String::from("fn main() {\n\tprintln!(\"Hello, world!\");\n}");
-
-        let request = PlaygroundRequest::new(code);
-        request.create_share_link().unwrap();
-    }
-
-    #[test]
-    fn test_eval() {
-        let code = String::from("let v = vec![1,2,3];\n    println!(\"{:?}\", v[1]);");
-
-        let request = PlaygroundRequest::new_eval(code);
-        let response = request.execute().unwrap();
-        assert!(response.playground_response.success);
-        assert_eq!(response.playground_response.stdout, "2\n");
     }
 }

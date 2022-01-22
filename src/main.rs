@@ -1,21 +1,30 @@
-pub mod bot;
-pub mod error;
-pub mod playground;
-pub mod slack_conn;
-
-use crate::bot::RustyBot;
-use slack::RtmClient;
+use rusty_slackbot::bot::on_message;
+use rusty_slackbot::error::RustyBotError;
+use slack_morphism::prelude::*;
+use slack_morphism_hyper::*;
 use std::env;
+use std::sync::Arc;
 
-fn main() {
-    let token = env::var("SLACK_TOKEN").expect("SLACK_TOKEN env var was not found");
+#[tokio::main]
+async fn main() -> Result<(), RustyBotError> {
+    let client = Arc::new(SlackClient::new(SlackClientHyperConnector::new()));
 
-    let mut bot_handler = RustyBot {};
-    let response = RtmClient::login_and_run(&token, &mut bot_handler);
+    let socket_mode_callbacks =
+        SlackSocketModeListenerCallbacks::new().with_push_events(on_message);
+    let listener_environment = Arc::new(SlackClientEventsListenerEnvironment::new(client.clone()));
+    let socket_mode_listener = SlackClientSocketModeListener::new(
+        &SlackClientSocketModeConfig::new(),
+        listener_environment.clone(),
+        socket_mode_callbacks,
+    );
 
-    println!("{:?}", response);
-    match response {
-        Ok(_) => {}
-        Err(e) => panic!("Error: {}", e),
-    }
+    let app_token_value =
+        SlackApiTokenValue(env::var("SLACK_APP_TOKEN").expect("SLACK_APP_TOKEN env var not found"));
+    let app_token = SlackApiToken::new(app_token_value);
+
+    socket_mode_listener.listen_for(&app_token).await?;
+
+    socket_mode_listener.serve().await;
+
+    Ok(())
 }

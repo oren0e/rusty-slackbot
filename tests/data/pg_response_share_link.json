@@ -1,0 +1,5 @@
+{
+  "id": "101",
+  "url": "https://gist.github.com/101",
+  "code": "fn main() {println!(\"Hello World\");}"
+}

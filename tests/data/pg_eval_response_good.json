@@ -1,0 +1,5 @@
+{
+  "success": true,
+  "stdout": "Hello World\n",
+  "stderr": "   Compiling playground v0.0.1 (/playground)\n    Finished dev [unoptimized + debuginfo] target(s) in 1.35s\n     Running `target/debug/playground`\n"
+}

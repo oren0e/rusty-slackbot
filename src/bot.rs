@@ -1,165 +1,203 @@
 use crate::error::RustyBotError;
 use crate::playground::{PlaygroundAnswer, PlaygroundRequest};
-use crate::slack_conn::SlackClient;
+use crate::slack_conn::CodeReplyTemplate;
 use regex::Regex;
-use slack::{self, Event, EventHandler, RtmClient};
+use slack_morphism::prelude::*;
+use slack_morphism_hyper::*;
 use std::env;
+use std::sync::Arc;
 
-pub struct RustyBot;
+pub async fn on_message(
+    event: SlackPushEventCallback,
+    client: Arc<SlackHyperClient>,
+    _states: Arc<SlackClientEventsUserState>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    tokio::spawn(async move { process_message(client, event).await });
+    Ok(())
+}
 
-impl RustyBot {
-    fn on_message(
-        &self,
-        client: SlackClient,
-        message: slack::Message,
-    ) -> Result<(), RustyBotError> {
-        match message {
-            slack::Message::Standard(msg) => {
-                if let Some(code) = has_code(&msg.text) {
-                    let response = self.eval_code(code)?;
-                    let channel_id = msg.channel.expect("channel should not be None");
-                    let _outcome = client.send_code_reply(
-                        &channel_id,
-                        &response.link,
-                        response.playground_answer.stdout,
-                        response.playground_answer.stderr,
-                    );
-                    return Ok(());
-                } else if let Some(command) = has_command(&msg.text) {
-                    if let Some(output) = self.eval_command(command)? {
-                        let channel_id = msg.channel.expect("channel should not be None");
-                        let _outcome = client.send_reply(&channel_id, output);
+async fn process_message(
+    client: Arc<SlackHyperClient>,
+    event: SlackPushEventCallback,
+) -> Result<(), RustyBotError> {
+    let token_value =
+        SlackApiTokenValue(env::var("SLACK_BOT_TOKEN").expect("SLACK_BOT_TOKEN env var not found"));
+    let token = SlackApiToken::new(token_value);
+    let session = client.open_session(&token);
+    let playground_url = env::var("PLAYGROUND_URL").expect("PLAYGROUND_URL env var not found");
+
+    match event.event {
+        SlackEventCallbackBody::Message(msg_event) => {
+            let channel = msg_event.origin.channel;
+            let content = msg_event.content;
+            if let Some(channel_id) = channel {
+                if let Some(msg_content) = content {
+                    let text = msg_content.text;
+                    // start matching the has_ functions
+                    // code
+                    if let Some(code) = has_code(&text) {
+                        // print "executing"
+                        let reply_content =
+                            SlackMessageContent::new().with_text("Executing...".to_owned());
+                        let reply_request =
+                            SlackApiChatPostMessageRequest::new(channel_id.clone(), reply_content);
+                        let _response = session.chat_post_message(&reply_request).await;
+                        let response = eval_code(code, &playground_url)
+                            .await
+                            .map_err(|e| RustyBotError::InternalServerError(e.into()))?;
+                        let reply_content = CodeReplyTemplate::new(
+                            &response.link,
+                            response.playground_answer.stdout,
+                            response.playground_answer.stderr,
+                        );
+                        let reply_request = SlackApiChatPostMessageRequest::new(
+                            channel_id,
+                            reply_content.render_template(),
+                        );
+                        let _response = session.chat_post_message(&reply_request).await;
+                        return Ok(());
                     }
-                    return Ok(());
-                } else if let Some(output) = has_bot_mention(&msg.text) {
-                    let channel_id = msg.channel.expect("channel should not be None");
-                    let _outcome = client.send_reply(&channel_id, output);
-                };
+                    // command
+                    else if let Some(command) = has_command(&text) {
+                        if let Some(output) = eval_command(command)? {
+                            let reply_content = SlackMessageContent::new().with_text(output);
+                            let reply_request =
+                                SlackApiChatPostMessageRequest::new(channel_id, reply_content);
+                            let _response = session.chat_post_message(&reply_request).await;
+                        }
+                        return Ok(());
+                    } else {
+                        return Ok(());
+                    }
+                }
                 return Ok(());
             }
-            _ => Ok(()),
+            Ok(())
         }
-    }
-
-    fn eval_command(&self, command: String) -> Result<Option<String>, RustyBotError> {
-        if command.starts_with("!help") {
-            match command.to_lowercase().as_str() {
-                "docs" => Ok(Some("https://doc.rust-lang.org/".to_owned())),
-                "book" => Ok(Some("https://doc.rust-lang.org/book/".to_owned())),
-                _ => Ok(None),
-            }
-        } else {
-            Err(RustyBotError::InvalidBotCommand {
-                command: command
-                    .lines()
-                    .next()
-                    .expect("Should be at least one word")
-                    .to_string(),
-            })
+        SlackEventCallbackBody::AppMention(mention_event) => {
+            let channel_id = mention_event.channel;
+            let reply_content =
+                SlackMessageContent::new().with_text("I'm alive, don't worry".to_owned());
+            let reply_request = SlackApiChatPostMessageRequest::new(channel_id, reply_content);
+            let _response = session.chat_post_message(&reply_request).await;
+            Ok(())
         }
-    }
-
-    fn eval_code(&self, code: String) -> Result<PlaygroundAnswer, RustyBotError> {
-        let request;
-        if code.starts_with("!code") {
-            request = PlaygroundRequest::new(code);
-        } else if code.starts_with("!eval") {
-            request = PlaygroundRequest::new_eval(code);
-        } else {
-            return Err(RustyBotError::InvalidBotCommand {
-                command: code
-                    .lines()
-                    .next()
-                    .expect("Should be at least one word")
-                    .to_string(),
-            });
-        };
-        match request.execute() {
-            Ok(res) => {
-                let ans = PlaygroundAnswer {
-                    playground_answer: res.playground_response,
-                    link: request.create_share_link()?,
-                };
-                return Ok(ans);
-            }
-            Err(e) => Err(RustyBotError::InternalServerError(e.into())),
-        }
+        _ => Ok(()),
     }
 }
 
-impl EventHandler for RustyBot {
-    fn on_event(&mut self, _cli: &RtmClient, event: Event) {
-        println!("on_event(event: {:?})", event); // TODO: replace with logging print statement
-        match event {
-            Event::Message(content) => {
-                let slack_client = SlackClient::init().expect("SlackClient init failed"); // TODO: should send a PR to allow Result in this trait's methods.
-                self.on_message(slack_client, *content)
-                    .expect("on_message failed");
-            }
-            _ => (),
-        }
-    }
-
-    fn on_close(&mut self, _cli: &RtmClient) {
-        return;
-    }
-
-    fn on_connect(&mut self, _cli: &RtmClient) {
-        return;
+fn eval_command(command: String) -> Result<Option<String>, RustyBotError> {
+    match command.to_lowercase().as_str() {
+        "docs" => Ok(Some("https://doc.rust-lang.org/".to_owned())),
+        "book" => Ok(Some("https://doc.rust-lang.org/book/".to_owned())),
+        _ => Ok(Some("*Available commands*\n!code - for complete code blocks\n!eval - for evaluating chunks that can fit in main function\n!help [docs, book] - links to classic rust material\n_Yours truely, Ferris_".to_owned())),
     }
 }
 
-fn has_code(message: &Option<String>) -> Option<String> {
-    match message {
-        &Some(ref text) => {
-            let re = Regex::new(r"!(code|eval)\n```\n?(?s:(?P<code>.*?))\n```")
-                .expect("code regex should not fail");
-            let code_result = match re.captures(&text) {
-                Some(capture) => Some(String::from(&capture["code"])),
-                _ => None,
+async fn eval_code(code: Code, playground_url: &str) -> Result<PlaygroundAnswer, RustyBotError> {
+    let request;
+    if code.kind == *"code" {
+        request = PlaygroundRequest::new(code.text).escape_html();
+    } else if code.kind == *"eval" {
+        request = PlaygroundRequest::new_eval(code.text).escape_html();
+    } else {
+        return Err(RustyBotError::InvalidBotCommand {
+            // never really reached because of has_code matching
+            command: code.kind.to_owned(),
+        });
+    };
+    let result = request.execute(playground_url).await;
+    match result {
+        Ok(res) => {
+            let ans = PlaygroundAnswer {
+                playground_answer: res.playground_response,
+                link: request.create_share_link(playground_url).await?,
             };
-            if code_result == Some("".to_string()) {
-                return None;
-            } else {
-                return code_result;
-            }
+            Ok(ans)
+        }
+        Err(e) => Err(RustyBotError::InternalServerError(e.into())),
+    }
+}
+
+#[derive(Debug)]
+struct Code {
+    kind: String,
+    text: String,
+}
+
+fn has_code(message: &Option<String>) -> Option<Code> {
+    match *message {
+        Some(ref text) => {
+            let re = Regex::new(r"!(?P<kind>code|eval)\n```?(?s:(?P<code>.*?))```")
+                .expect("code regex should not fail");
+            let code_result = re.captures(text).map(|capture| Code {
+                kind: String::from(&capture["kind"]),
+                text: String::from(&capture["code"]),
+            });
+            code_result
         }
         _ => None,
     }
 }
 
 fn has_command(message: &Option<String>) -> Option<String> {
-    match message {
-        &Some(ref text) => {
+    match *message {
+        Some(ref text) => {
             let re =
-                Regex::new(r"!help\n(?P<command>.*?)$").expect("command regex should not fail");
-            let command_result = match re.captures(&text) {
-                Some(capture) => Some(String::from(&capture["command"])),
-                _ => None,
-            };
-            if command_result == Some("".to_string()) {
-                return None;
+                Regex::new(r"!help\s(?P<command>.*?)$").expect("command regex should not fail");
+            let command_result = re
+                .captures(text)
+                .map(|capture| String::from(&capture["command"]));
+            if command_result == Some("".to_owned()) {
+                None
             } else {
-                return command_result;
+                command_result
             }
         }
         _ => None,
     }
 }
 
-fn has_bot_mention(message: &Option<String>) -> Option<String> {
-    match message {
-        Some(text) => {
-            let bot_name =
-                env::var("SLACK_BOT_NAME").expect("SLACK_BOT_NAME env var was not found");
-            let re = Regex::new(r"@(?P<bot>[\w_]+)").expect("bot mention regex should not fail");
-            for caps in re.captures_iter(&text) {
-                if bot_name == &caps["bot"] {
-                    return Some(String::from("I'm alive, don't worry"));
-                };
-            }
-            None
-        }
-        None => None,
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_has_command() {
+        let message_with_command = &Some("!help book".to_owned());
+        let message_without_command = &Some("nothing here".to_owned());
+        assert_eq!(has_command(message_with_command), Some("book".to_owned()));
+        assert!(has_command(message_without_command).is_none());
+    }
+
+    #[test]
+    fn test_has_code() {
+        let message_with_code = &Some("!eval\n```this is code```".to_owned());
+        let message_without_code = &Some("!bla\n```this is not code```".to_owned());
+
+        let ans_with_code = has_code(message_with_code).unwrap();
+        assert_eq!(ans_with_code.kind, "eval".to_owned());
+        assert_eq!(ans_with_code.text, "this is code".to_owned());
+
+        let ans_without_code = has_code(message_without_code);
+        assert!(ans_without_code.is_none());
+    }
+
+    #[test]
+    fn test_eval_command() {
+        let command_docs = "docs".to_owned();
+        let command_book = "book".to_owned();
+
+        let expected_reply_docs = "https://doc.rust-lang.org/".to_owned();
+        let expected_reply_book = "https://doc.rust-lang.org/book/".to_owned();
+        let expected_reply_other = "*Available commands*\n!code - for complete code blocks\n!eval - for evaluating chunks that can fit in main function\n!help [docs, book] - links to classic rust material\n_Yours truely, Ferris_".to_owned();
+
+        let reply_docs = eval_command(command_docs).unwrap().unwrap();
+        let reply_book = eval_command(command_book).unwrap().unwrap();
+        let reply_other = eval_command("something".to_owned()).unwrap().unwrap();
+
+        assert_eq!(expected_reply_docs, reply_docs);
+        assert_eq!(expected_reply_book, reply_book);
+        assert_eq!(expected_reply_other, reply_other);
     }
 }

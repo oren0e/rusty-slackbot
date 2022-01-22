@@ -1,0 +1,5 @@
+{
+  "success": false,
+  "stdout": "",
+  "stderr": "   Compiling playground v0.0.1 (/playground)\nerror: mismatched closing delimiter: `}`\n --> src/main.rs:1:20\n  |\n1 | fn main() {println!(\"Hello World\"}\n  |           -        ^             ^ mismatched closing delimiter\n  |           |        |\n  |           |        unclosed delimiter\n  |           closing delimiter possibly meant for this\n\nerror: could not compile `playground` due to previous error\n"
+}
