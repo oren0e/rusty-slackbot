@@ -1,0 +1,12 @@
+version: '3.7'
+
+services:
+  rusty-slackbot:
+    build: .
+    container_name: rusty-slackbot
+    env_file:
+      - /opt/rusty-slackbot/.env
+    ports:
+      - 443:443
+    logging:
+      driver: journald
