@@ -40,8 +40,9 @@ Currently the bot has the following commands supported:
 - `@<botname>`: Will generate a nice response from the bot
 
 Some examples:
-![](images/code.png)
-![](images/eval.png)
+
+<img src="images/code.png" alt="code" width="200"/>
+<img src="images/eval.png" alt="eval" width="200"/>
 
 ## TODO
 
