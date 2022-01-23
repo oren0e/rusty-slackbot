@@ -1,3 +1,5 @@
+![CI passing](https://github.com/oren0e/rusty-slackbot/workflows/CI/badge.svg)
+
 # Rusty Slackbot
 
 Slack bot that can execute Rust code
