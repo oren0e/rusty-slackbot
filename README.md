@@ -41,8 +41,8 @@ Currently the bot has the following commands supported:
 
 Some examples:
 
-<img src="images/code.png" alt="code" width="200"/>
-<img src="images/eval.png" alt="eval" width="200"/>
+<img src="images/code.png" alt="code" width="400"/>
+<img src="images/eval.png" alt="eval" width="400"/>
 
 ## TODO
 
