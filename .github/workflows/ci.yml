@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: Rust ${{matrix.rust}}
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - uses: dtolnay/rust-toolchain@1.57.0
+      with:
+        components: clippy, rustfmt
+    - name: Print rust version
+      run: rustup show
+    - name: Print clippy version
+      run: cargo clippy --version
+    - name: Lint
+      run: make lint 
+    - name: Run tests
+      run: make test
