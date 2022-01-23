@@ -1,4 +1,4 @@
-# rusty-slackbot
+# Rusty Slackbot
 
 Slack bot that can execute Rust code
 
@@ -31,13 +31,17 @@ Note: You'll have to have docker and docker-compose installed in order to run th
 
 Currently the bot has the following commands supported:
 
-- `!code`: Entering this following a new line with formatted Rust code (using 3 backticks (\`) in slack) will execute the code and will generate and `stdout` and `stderr` along with a playground link to the code.
-- `!eval`: As with the previous command you should type it as `!eval` followed by new line with formatted rust code using 3 backticks. This is for code that can live inside `main()` - so you don't have type main's signature itself. It is intended for evaluating simple expressions that do not require extra functions/imports.
+- `!code`: Entering this following a new line with formatted Rust code (using 3 backticks (\`) in slack) will execute the code and will generate `stdout` and `stderr` along with a playground link to the code.
+- `!eval`: As with the previous command you should type it as `!eval` followed by new line with formatted rust code using 3 backticks. This is for code that can live inside `main()` - so you don't have to type main's signature itself. It is intended for evaluating simple expressions that do not require extra functions/imports.
 - `!help`:
   - `!help docs` - will output a link for rust docs
   - `!help book` - will output a link for the rust book
   - `!help <anything else>` - typing anything other than [docs, books] will display the available commands
 - `@<botname>`: Will generate a nice response from the bot
+
+Some examples:
+![](images/code.png)
+![](images/eval.png)
 
 ## TODO
 
